@@ -1,0 +1,960 @@
+---
+title: "Práctica 2.  Tipología y ciclo de vida de los datos"
+author: "María Sánchez y Cayetano Bautista"
+date: "01/05/2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    #df_print: kable
+    highlight: haddock
+    #theme: cosmo
+    theme: spacelab
+    toc: yes
+  word_document:
+    toc: yes
+  editor_options:
+    chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+# 1. Descripcion del dataset. ¿Por qué es importante y que pregunta/problema pretende responder?
+
+El conjunto de datos objeto de análisis está compuesto por 53 variables y 1700 observaciones, las cuáles contienen el estilo de juego del videojuego de consola Fifa 2017, así como estadísticas reales de los jugadores de futbol.
+
+La descripción de las principales variables es la siguiente:
+
+* Name: Nombre del jugador
+* Club: Equipo en el que juega
+* Rating: Valoración global del jugador, entre 0 y 100
+* Height: Altura
+* Weight: Peso
+* Preffered_Foot: Pie preferido para jugar
+* Age: Edad
+* Ball_Control: Control de la pelota, entre 0 y 100
+* Club_position: Si es portero o jugador
+* Dribbling : Control de regateo, entre 0 y 100
+
+La descripción de los atributos se puede consultar en https://www.fifplay.com/encyclopedia. La descripción
+de las abreviaturas de la posición del jugador en el campo se puede consultar en https://www.dtgre.com/2016/10/fifa-17-position-abbreviations-acronyms.html.
+
+La importancia de este dataset reside en que sirve como primer acercamiento al análisis de datos futbolísitico y deportivo (el dataset es ideal en tanto que se tienen ratings impuestos a cada jugador en lugar de sus estadísticas reales). Por otro lado, a un nivel mucho más terrenal, nos podría servir para hacer el equipo "más rentable" de todo el juego.
+
+Las preguntas que pretendemos responder con este estudio son las siguientes:
+
+
+**¿Cuál es el valor promedio del Rating de los jugadores?**
+
+**¿Los jugadores de fútbol zurdos tienen mejor control de la pelota que los diestros?**
+
+**¿Los jugadores de fútbol zurdos tienen mejor valoración global que los diestros?**
+
+**¿Los jugadores de fútbol zurdos tienen mejor driblling que los diestros?**
+
+**¿El porcentaje de jugadores con un Rating superior a 90 es diferente en el Barcelona y en el Madrid?**
+
+**¿El peso de los porteros es mayor al peso de los jugadores de campo?**
+
+**¿Son los porteros al menos 5 cms más altos que los jugadores de campo?**
+
+**¿Cuál sería el rating de un jugador de campo con pie izquierdo preferido, con un peso de 70, edad de 24, control del balón de 80 y visión de 60?**
+
+
+
+# 2. Integración y selección de los datos de interes a analizar.
+
+Leemos el fichero de datos:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(kableExtra)
+
+```
+
+
+```{r warning=FALSE}
+fifa <- read.csv("Fifa.csv")
+head(fifa)
+
+```
+
+```{r}
+summary(fifa)
+```
+
+Como podemos ver, las variables 'Height' y 'Weight' están entendidas como categóricas cunado en realidad deberían ser continuas. Por tanto, vamos a corregir esto.
+
+```{r}
+
+aNum_H_W <- function(numstr) {
+  if (grepl("kg", numstr)) {r = as.numeric(sub("kg", "", numstr))}
+  else {r = as.numeric(sub("cm", "", numstr))}
+  return(r)}
+
+fifa$Height <- sapply(fifa$Height, aNum_H_W)
+fifa$Weight <- sapply(fifa$Weight, aNum_H_W)
+
+head(fifa$Height)
+class(fifa$Height)
+head(fifa$Weight)
+class(fifa$Weight)
+
+```
+
+Solucionado.
+
+
+Vamos a transformar a factor las variables que son caracter.
+
+
+
+```{r}
+str(mutate_if(fifa, is.character, as.factor))
+```
+
+
+
+Solucionado.
+
+Ahora vamos a crear una nueva variable categórica 'clasificacion' a partir de la numérica 'Rating'. Los niveles serán los siguientes:
+
+- 'Rating': 90-99 $\Rightarrow$ 'clasificacion' = "Excelente".
+
+- 'Rating': 80-89 $\Rightarrow$ 'clasificacion' = "Muy bueno".
+
+- 'Rating': 70-89 $\Rightarrow$ 'clasificacion' = "Bueno".
+
+- 'Rating': 50-69 $\Rightarrow$ 'clasificacion' = "Regular".
+
+- 'Rating': 40-49 $\Rightarrow$ 'clasificacion' = "Malo".
+
+- 'Rating': 0-39 $\Rightarrow$ 'clasificacion' = "Muy malo".
+
+Lo haremos a través de la función *cut()* de R.
+
+```{r}
+
+# Intervalos (cerrados por la izquierda).
+b = c(0, 40, 50, 70, 80, 90, 100)
+
+# Etiquetas.
+lab = c("Muy malo", "Malo", "Regular", "Bueno", "Muy bueno", "Excelente")
+
+# Incluimos el valor mínimo '0': include.lowest = T
+# Intervalos cerrados por la izquierda y abiertos por la derecha: right = F
+# Los niveles están ordenados: ordered_result = T
+fifa$clasificacion <- cut(fifa$Rating, breaks = b, labels = lab, 
+                          include.lowest = T, right = F, ordered_result = T)
+
+summary(fifa$clasificacion)
+
+```
+
+Vamos a crear una nueva variable ‘portero’ que indique si el jugador juega de portero (‘GK’ en ‘Club_Position’).
+
+```{r}
+
+fifa$portero <- (fifa$Club_Position == 'GK')
+table(fifa$portero)
+
+```
+
+Es decir, tenemos 632 porteros y 16956 jugadores de campo.
+
+Pasamos ahora a limpiar los datos.
+
+# 3. Limpieza de los datos.
+
+Vamos a comprobar si los datos contienen valores perdidos:
+
+```{r}
+
+colSums(is.na(fifa))
+
+```
+
+Como vemos, existen algunos. Analicémoslos.
+
+```{r}
+
+head(fifa$National_Position[is.na(fifa$National_Kit)])
+
+```
+Los valores perdidos de la variable 'National_Kit' corresponden a jugadores que no son internacionales (cadena vacía en 'National_Position'), como no podía ser de otra manera. Para indicarlo, cambiaremos las cadenas vacías de 'National_Position' por "NO international". Tambén cambiaremos los NA de 'National_Kit' por 0, ya que no es un número que pueda llevar ningún jugador, por lo que es un perfecto valor *centinela*.
+
+```{r}
+
+fifa$National_Kit[is.na(fifa$National_Kit)] = 0
+fifa$National_Position[fifa$National_Position == ""] = "NO international"
+sum(is.na(fifa$National_Kit))
+sum(fifa$National_Position == "")
+
+```
+Solucionado. Comprobemos igualmente si hay más variables con cadenas vacías.
+
+```{r}
+
+colSums(fifa == "")
+
+```
+Hay también 1 en las variables 'Club_Position' y 'Club_Joining', y devuelve NA en las variables donde tdavía no hemos tratado los 2 NA que quedan.
+
+Veamos qué ocurre con los valores perdido de 'Contract_Expiry' y 'Club_Kit', y a ver si tienen relación entre ellos y con las cadenas vacías que todavía tenemos.
+
+```{r}
+
+fifa[which(is.na(fifa$Contract_Expiry)), ]
+
+```
+
+Ya sabemos lo que ocurre: tenemos que el jugador Didier Drogba es agente libre, por lo que no tiene posición en club ('Club_Position' vacío), número ('Club_Kit' NA) ni fechas de inicio ('Club_Joining' vacío) y fin de contrato ('Contract_Expiry' NA).
+
+Lo solucionamos copiando "Free agent" a 'Club_Position', 'Club_Kit' y 'Club_Joining'. En 'Contract_Expiry' y'Club_Kit' colocaremos un 0, actuando como *centinela* de nuevo.
+
+
+```{r}
+
+fifa$Club_Position[fifa$Club_Position == ""] = "Free agent"
+fifa$Club_Joining[fifa$Club_Joining == ""] = "Free agent"
+fifa$Club_Kit[is.na(fifa$Club_Kit)] = 0
+fifa$Contract_Expiry[is.na(fifa$Contract_Expiry)] = 0
+
+```
+
+Comprobemos que lo hemos solucionado todo.
+
+```{r}
+
+sum(colSums(is.na(fifa)))
+sum(colSums(fifa == ""))
+fifa[which(fifa$Club == "Free agent"), ]
+
+```
+
+Solucionado.
+
+Con los datos preparados, procedemos al análisis de los datos.
+
+# 4. Análisis de los datos.
+
+**Selección de los grupos de datos que se quieren analizar/comparar (planificacion de los analisis a aplicar),representación de los resultados a partir de tablas y gráficas, comprobación de la normalidad y homogeneidad de la varianza, aplicación de pruebas estadisticas para comparar los grupos de datos. En funcion de los datos y el objetivo del estudio, aplicar pruebas de contraste de hipotesis, correlaciones, regresiones, etc. Aplicar al menos tres metodos de analisis diferentes.**
+
+Vamos a responder a cada una de las preguntas planteadas representando los resultados en tablas y gráficas y aplicando pruebas estadísticas como  intervalos de Confianza, contraste de hipótesis, regresión, etc, previa comprobación de la normalidad y homegeneidad.  
+
+### **¿Cuál es el valor promedio del Rating de los jugadores?**
+
+Representamos visualmente esta variable:
+
+
+```{r message=FALSE, warning=FALSE}
+# Histograma de Rating
+library(ggplot2)
+ggplot(fifa, aes(Rating)) + geom_histogram(fill="pink",col="purple") +
+ xlab("Valoraciones de los jugadores") + ylab("Frecuencias") +  
+  ggtitle("Distribución de la variable Rating")
+```
+
+```{r}
+# Boxplot de Rating
+library(ggplot2)
+ggplot(fifa, aes(y=Rating)) + geom_boxplot()
+```
+
+
+La variable **Rating** se distribuye **simétricamente**, aproximadamente como una **distribución Normal**, con un valor mínimo de 45 y un máximo de 95, siendo muy poco frecuentes los valores menores de 50 y los mayores de 85.
+
+Vamos a calcularlo de manera análitica a través de un **intervalo de confianza de la media poblacional de la variable ‘Rating’**
+
+
+Construimos primero una función que dada una muestra y un nivel de confianza dado, calcule el intervalo de confianza asociado. Esto facilitará los cálculos posteriores.
+
+```{r}
+
+IC <- function(x, alfa=0.05){
+  n <- length(x)
+  errorT <- sd(x)/sqrt(n)
+  errorT
+  t<-qnorm(1-alfa/2)
+  t
+  error<- t*errorT
+  error
+  intervalo = c(mean(x) - error, mean(x) + error)
+  return(intervalo)
+}
+
+```
+
+
+Intervalo de confianza al 95% de la media poblacional de la variable Rating:
+
+```{r}
+
+IC(fifa$Rating, alfa=0.05)
+
+```
+
+
+Vamos a comprobar con la función `t.test` que realiza este cálculo automáticamente:
+
+```{r}
+# Comprobamos con la función ya implementada 
+t.test(fifa$Rating, sigma.df=sd(fifa$Rating))
+```
+
+Vemos que efectivamente nos sale el mismo resultado que con la función implementada.  
+
+La **interprestación** de este intervalo de confianza es: si obtenemos infinitas muestras de las valoraciones globales (Rating) de la población de jugadores de fútbol, el 95 % de los intervalos de confianza calculados a partir de estas muestras contendrían al valor real de la media poblacional.
+
+
+
+### **¿Los jugadores de fútbol zurdos tienen mejor control de la pelota que los diestros?** 
+
+### **¿Los jugadores de fútbol zurdos tienen mejor valoración global que los diestros? ** 
+
+### **¿Los jugadores de fútbol zurdos tienen mejor driblling que los diestros? **
+
+
+
+Vamos a seleccionar los jugadores que **no son porteros**:
+
+```{r} 
+# Jugadores no porteros:
+fifa_jug <- filter(fifa, portero == F)
+
+# Jugadores porteros:
+fifa_port <- filter(fifa, portero == T)
+```
+
+Creamos un dataframe para los jugadores Zurdos (**Z**) y otro para los jugadores diestros (**D**):
+
+```{r} 
+# fifa para zurdos y diestros
+Z = fifa_jug[fifa_jug$Preffered_Foot == "Left",]
+D = fifa_jug[fifa_jug$Preffered_Foot == "Right",]
+```
+
+
+Para hacernos una primera idea, vamos a representar visualmente mediante dintintos gráficos los datos del control de pelota, la valoración global y el dribling, de forma comparativa para zurdos y diestros: 
+
+
+```{r message=FALSE}
+library(gridExtra)
+library(ggplot2)
+g1 <- ggplot( Z, aes(Ball_Control)) + geom_histogram(fill="beige",col="red") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Control del balón de los zurdos")
+
+g2 <- ggplot( D, aes(Ball_Control)) + geom_histogram(fill="beige",col="red") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Control del balón de los diestros")
+
+grid.arrange(g1,g2, nrow=1)
+
+```
+
+```{r}
+g3 <- ggplot( Z, aes(x=Ball_Control)) + geom_boxplot() +  ggtitle("Control del balón de los jug zurdos")
+g4 <- ggplot( D, aes(x=Ball_Control)) + geom_boxplot() +  ggtitle("Control del balón de los jug diestros")
+grid.arrange(g3,g4, nrow=1)
+```
+
+
+Con respecto al **control de la pelota** podemos apreciar que el volumen de jugadores con puntuaciones inferiores a 25 es mayor en los jugadores diestros que en los zurdos, y que las puntuaciones que más jugadores tienen, en ambos tipos, se encuentran en torno a 60 y 70.
+
+
+
+
+```{r message=FALSE}
+library(gridExtra)
+library(ggplot2)
+g5 <- ggplot( Z, aes(Rating)) + geom_histogram(fill="pink",col="purple") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Rating de los jugadores zurdos")
+
+g6 <- ggplot( D, aes(Rating)) + geom_histogram(fill="pink",col="purple") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Rating de los jugadores diestros")
+
+grid.arrange(g5,g6, nrow=1)
+
+```
+
+```{r}
+g7 <- ggplot( Z, aes(y=Rating)) + geom_boxplot() +  ggtitle("Rating de los jugadores zurdos")
+g8 <- ggplot( D, aes(y=Rating)) + geom_boxplot() +  ggtitle("Rating de los jugadores diestros")
+grid.arrange(g7,g8, nrow=1)
+```
+
+Para la variable **Rating**, ambas muestras se presentan muy igualadas, siendo la distribución a partir del tercer cuartil, prácticamente similares.
+
+```{r message=FALSE}
+library(gridExtra)
+library(ggplot2)
+g9 <- ggplot( Z, aes(Dribbling)) + geom_histogram(fill="grey",col="orange") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Dribbling de los jugadores zurdos")
+
+g10 <- ggplot( D, aes(Rating)) + geom_histogram(fill="grey",col="orange") +
+ xlab("Puntuaciones") + ylab("Frecuencias") +  
+  ggtitle("Dribbling de los jugadores diestros")
+
+grid.arrange(g9,g10, nrow=1)
+
+```
+
+```{r}
+g11 <- ggplot( Z, aes(y=Dribbling)) + geom_boxplot() +  ggtitle("Dribbling de los jugadores zurdos")
+g12 <- ggplot( D, aes(y=Dribbling)) + geom_boxplot() +  ggtitle("Dribbling de los jugadores diestros")
+grid.arrange(g11,g12, nrow=1)
+```
+
+Con respecto a la variable **Dribbling** vemos que para los jugadores diestros, el rango intercuartílico es claramente superior que para los jugadores zurdos, siendo el volumen en éstos mayor en cuanto a las puntuaciones inferiores, menores de 50.
+
+Calculemos ahora las respuestas a las preguntas planteadas de manera analítica a través del siguiente **Contrastes de Hipótesis**. Lo escribimos de manera genérica, particularizando luego para la $\mu$ de cada variable:
+
+$$
+\left\{
+\begin{array}{ll}
+H_{0}: \mu_{zurdos} = \mu_{diestros} \\
+H_{1}: \mu_{zurdos} > \mu_{diestros}
+\end{array}
+\right.
+$$
+
+siendo  $\mu$ la **media** de **Ball_Control, Rating, Dribbling** para la primera, segunda y tercera pregunta, respectivamente.
+
+
+Estamos ante un contraste de **dos muestras independientes**, ya que no tienen un relación directa o inversamente proporcional unas con otras. 
+
+Por el teorema central del límite podemos **asumir normalidad**, puesto que tenemos una muestra de tamaño grande (n=33 > 30) y hemos asumido que la población original es normal, por lo tanto el test es **paramétrico**.
+
+Fijándonos en cómo hemos planteado la Hipótesis Alternativa, es un test **unilateral por la derecha** 
+
+Para comprobar si podemos asumir que las varianzas sean iguales (**homocedasticidad**) aplicamos el test `var.test` de R:
+
+
+
+```{r}
+# Test de varianzas para Ball_Control
+var.test(Z$Ball_Control, D$Ball_Control)
+```
+
+
+```{r}
+# Test de varianzas para Rating
+var.test(Z$Rating, D$Rating)
+```
+
+
+```{r}
+# Test de varianzas para Dribbling
+var.test(Z$Dribbling, D$Dribbling)
+```
+
+Vemos que para las 3 variables el p-valor es menor que  $\alpha = 0,05$, por lo tanto, **rechazamos** en los 3 casos la $Ho$ de que las varianzas sean iguales en las dos poblaciones. 
+
+
+Creamos una función para calcular el estadístico de contraste, el valor crítico y el valor p:
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(kableExtra)
+
+testCH <- function(var, x1, x2, CL=0.95,equalvar=TRUE, alternative="bilateral" ){ 
+  
+  mean1<-mean(x1)
+  n1<-length(x1)
+  sd1<-sd(x1)
+  mean2<-mean(x2)
+  n2<-length(x2)
+  sd2<-sd(x2)
+  
+  if (equalvar==TRUE){
+  s <-sqrt( ((n1-1)*sd1^2 + (n2-1)*sd2^2 )/(n1+n2-2) )
+  Sb <- s*sqrt(1/n1 + 1/n2)
+  df<-n1+n2-2
+  }
+  else{ 
+  Sb <- sqrt( sd1^2/n1 + sd2^2/n2 )
+  denom <- ( (sd1^2/n1)^2/(n1-1) + (sd2^2/n2)^2/(n2-1))
+  df <- ( (sd1^2/n1 + sd2^2/n2)^2 ) / denom
+  }
+  alfa <- (1-CL)
+  t<- (mean1-mean2) / Sb
+  
+  if (alternative=="bilateral"){
+  tcritical <- qt( alfa/2, df, lower.tail=FALSE ) #two sided
+  pvalue<-pt( abs(t), df, lower.tail=FALSE )*2 #two sided
+  }
+  else if (alternative=="less"){
+  tcritical <- qt( alfa, df, lower.tail=TRUE )
+  pvalue<-pt( t, df, lower.tail=TRUE )
+  }
+  else{ #(alternative=="greater")
+  tcritical <- qt( alfa, df, lower.tail=FALSE )
+  pvalue<-pt( t, df, lower.tail=FALSE )
+  }
+  
+  #Guardamos el resultado en un data frame
+  
+  resultado<-data.frame(var, mean1, mean2, n1, n2,t,tcritical,pvalue)
+  return (resultado)
+  }
+```
+
+
+
+Aplicamos la función a Ball_Control:
+
+
+```{r}
+testBControl<-testCH('Bcontrol',Z$Ball_Control, D$Ball_Control, equalvar=FALSE, alternative = "greater")
+
+# Cambiamos los nombres del data frame para nuestro ejercicio
+nombres_col <- c("var", "mean_Left", "mean_Right", "n_Left", "n_Right", "obs_value", "critical", "pvalue")
+colnames(testBControl) <- nombres_col
+
+testBControl  %>% kable() %>% kable_styling()
+```
+
+
+Comprobamos con la función implementada:
+
+
+```{r}
+t.test( Z$Ball_Control, D$Ball_Control, var.equal=FALSE, alternative = "greater")
+```
+
+Vemos que efectivamente coincide.
+
+Aplicamos la función a Rating:
+
+```{r}
+testRating<-testCH('Rating',Z$Rating, D$Rating, equalvar=FALSE, alternative = "greater")
+colnames(testRating) <- nombres_col
+testRating  %>% kable() %>% kable_styling()
+```
+
+Comprobamos con la función implementada:
+
+```{r}
+t.test( Z$Rating, D$Rating, var.equal=FALSE, alternative = "greater")
+```
+
+Coincide.
+
+Aplicamos la función a Dribbling:
+
+```{r}
+testDribbling<-testCH('Dribbling', Z$Dribbling, D$Dribbling, equalvar=FALSE, alternative = "greater")
+colnames(testDribbling) <- nombres_col
+testDribbling  %>% kable() %>% kable_styling()
+```
+
+Comprobamos con la función implementada:
+
+```{r}
+t.test( Z$Dribbling, D$Dribbling, var.equal=FALSE, alternative = "greater")
+```
+
+Coincide.
+
+
+La tabla de los resultados de los tests anteriores es la siguiente:
+
+```{r}
+testall = rbind(testRating,testDribbling,testBControl)
+testall %>% kable() %>% kable_styling()
+```
+
+
+
+Para los tres casos el valor observado es mayor que el valor crítico y el p-valor es menor que $\alpha$ = 0.05, por lo tanto se **rechazan en los 3 casos las Hipótesis Nulas**, es decir, que el Control de la pelota, el Rating y el Dribbling es superior en los jugadores zurdos que en los diestros, al 95% de confianza.
+
+
+
+### **¿El porcentaje de jugadores con un Rating superior a 90 es diferente en el Barcelona y en el Madrid?**
+
+
+Vamos a contestar a esta pregunta a través del siguiente **contraste de hipótesis**:
+
+$$
+\left\{
+\begin{array}{ll}
+H_{0}: p_{Bcn} = p_{Md} \\
+H_{1}:  p_{Bcn} \neq p_{Md} 
+\end{array}
+\right.
+$$
+
+Siendo:
+
+$p_{Bcn}$ = proporción de jugadores con Rating mayor a 90 del equipo del FC Barcelona y 
+
+$p_{Md}$ = proporción de jugadores con Rating mayor a 90 del equipo del Madrid.
+
+
+
+
+Vamos a aplicar el Test para la diferencia de dos prorporciones con muestras grandes.Vamos a calcular la
+proporción de jugadores con un Rating mayor a 90 para el equipo del Barcelona, y lo mismo para el equipo del Madrid.
+Vamos a obtener dos proporciones y vamos a comparar si la primera es significativamente diferente de la segunda, es decir, estamos ante un test **bilateral**.
+
+
+
+Definimos las muestras y las proporciones:
+
+
+```{r}
+Bcn <- fifa[fifa$Club=="FC Barcelona",]
+Md <- fifa[fifa$Club=="Real Madrid",]
+fifa_Rat90Bcn = Md[Bcn$Rating > 90,]
+fifa_Rat90Md = Md[Md$Rating > 90,]
+n1 <-nrow(Bcn)
+n2<-nrow(Md)
+p1 <- sum(Bcn$Rating>90)/n1
+p2 <- sum(Md$Rating>90)/n2
+
+paste("El número de jugadores del FC Barcelona es",n1, "y la proporción de jugadores con un Rating mayor a 90,",round(p1,2))
+
+paste("El número de jugadores del Madrid es",n2, "y la proporción de jugadores con un Rating mayor a 90,",round(p2,2))
+```
+
+Implementamos el test:
+
+```{r}
+alpha<-0.03
+p<- (n1*p1 + n2*p2) /(n1+n2)
+zobs<- (p1-p2) / sqrt( p*(1-p)*(1/n1 + 1/n2))
+zcrit <- qnorm(alpha/2, lower.tail=FALSE)
+pvalue<- 2*pnorm(zobs, lower.tail=FALSE)
+c(zobs, zcrit, pvalue)
+
+```
+
+Comprobamos con la función ya implementada en R:
+
+```{r warning=FALSE}
+success <- c(p1*n1,p2*n2)
+n <- c(n1,n2)
+prop.test( success, n, alternative="two.sided", correct=FALSE, conf.level = 0.97)
+
+```
+
+Vemos que efectivamente coincide. 
+
+El p-valor=0.3022 > $\alpha$=0.03 por lo tanto, **aceptamos la Hipótesis nula $H_0$**, es decir, no podemos afirmar que las diferencias de las proporciones del Barcelona y el Madrid sean significativamente diferentes con un nivel de confianza del 97%.
+
+
+### **¿El peso de los porteros es mayor al peso de los jugadores de campo?**
+
+Veamos la distribución del peso entre porteros y jugadores gráficamente:
+
+
+```{r}
+
+boxplot(Weight ~ portero, fifa, col = "lightblue")
+
+```
+
+Podemos ver claramente que los porteros suelen pesar más que los jugadores. Comprobémoslo de manera analítica a través de un intervalo de cofianza al 95% de la media poblacional de la variable Weight para porteros y jugadores:
+
+```{r}
+
+IC(fifa_jug$Weight, alfa=0.05)
+
+```
+
+Comprobamos con la función *t.test()*.
+
+```{r}
+
+t.test(fifa_jug$Weight, conf.level=0.95)$conf.int
+
+```
+Coinciden.
+
+Intervalo de confianza al 95% de la media poblacional para los porteros:
+
+```{r}
+
+IC(fifa_port$Weight, alfa=0.05)
+
+```
+Comprobamos con la función *t.test()*.
+
+```{r}
+
+t.test(fifa_port$Weight, conf.level=0.95)$conf.int
+
+```
+Coinciden.
+
+Además, como los intervalos son disjuntos, **podemos asegurar al 95% que la media del peso de los porteros de la última década es mayor que la de los jugadores de campo de la última década**. 
+
+```{r}
+
+IC(fifa_port$Weight, alfa=0.05)[2] - IC(fifa_jug$Weight, alfa=0.05)[1]
+IC(fifa_port$Weight, alfa=0.05)[1] - IC(fifa_jug$Weight, alfa=0.05)[2]
+
+```
+
+
+De hecho, fijándonos en los límites inferiores y superiores de los intervalos, podemos asegurar, al 95%, que la media de peso de los porteros de la última década es entre 7.47 y 8.61 kg superior a la de los jugadores de campo.
+
+### **¿Son los porteros al menos 5 cms más altos que los jugadores de campo?**
+
+Representamos visualmente la altura con respecto a porteros y jugadores:
+
+```{r}
+
+boxplot(fifa$Height ~ portero, fifa, col = "lightpink")
+
+```
+
+Vemos claramente que la altura de los porteros es mayor que la de los jugadores. 
+
+Ahora plantearemos si podemos aceptar que la altura de los porteros supera en más de 5 centímetros la altura de los jugadores de campo, a través del siguiente **contraste de hipótesis**:
+
+- $H_{0}$: $\mu_{portero} - \mu_{jugador} \leq 5$
+
+- $H_{1}$: $\mu_{portero} - \mu_{jugador} > 5$
+
+donde $mu$ es la media poblacional de la altura de los porteros/jugadores.
+
+
+Estamos ante un test de dos muestras sobre la media con varianzas desconocidas. Por el teorema del límite central, podemos asumir normalidad, pues las dos muestras tienen un tamaño muy superior a 30.
+
+Aplicaremos la distribución t, dado que no se conocen la varianzas de la población. Es necesario comprobar si podemos suponer varianzas iguales. Para ello, aplicamos el test var.test de R:
+
+```{r}
+
+var.test(fifa_port$Weight, fifa_jug$Weight)
+
+```
+
+El p_value del test es p-value = 0.7891781 > 0.05. Por tanto, descartamos igualdad de varianzas en las dos poblaciones. Por tanto, asumimos igualdad de varianzas.
+
+En consecuencia, el test se corresponde con un test de dos muestras independientes sobre la media con varianzas desconocidas iguales. El test es unilateral.
+
+
+Generamos una función que calcule el t-test: valor del estadístico de contraste, valor crítico y p-value.
+
+```{r}
+
+library(knitr)
+library(kableExtra)
+myttest <- function(x1, x2, d=0, CL=0.95, equalvar=TRUE, alternative="bilateral"){
+  mean1<-mean(x1)
+  n1<-length(x1)
+  sd1<-sd(x1)
+  mean2<-mean(x2)
+  n2<-length(x2)
+  sd2<-sd(x2)
+  if (equalvar==TRUE){
+    s <-sqrt( ((n1-1)*sd1^2 + (n2-1)*sd2^2 )/(n1+n2-2) )
+    Sb <- s*sqrt(1/n1 + 1/n2)
+    df<-n1+n2-2
+    }
+  else{ #equalvar==FALSE
+    Sb <- sqrt( sd1^2/n1 + sd2^2/n2 )
+    denom <- ( (sd1^2/n1)^2/(n1-1) + (sd2^2/n2)^2/(n2-1))
+    df <- ( (sd1^2/n1 + sd2^2/n2)^2 ) / denom
+    }
+  alfa <- (1-CL)
+  t<- (mean1-mean2- d) / Sb
+  if (alternative=="bilateral"){
+    tcritical <- qt( alfa/2, df, lower.tail=FALSE ) #two sided
+    pvalue<-pt( abs(t), df, lower.tail=FALSE )*2 #two sided
+    }
+  else if (alternative=="less"){
+    tcritical <- qt( alfa, df, lower.tail=TRUE )
+    pvalue<-pt( t, df, lower.tail=TRUE )
+    }
+  else{ #(alternative=="greater")
+    tcritical <- qt( alfa, df, lower.tail=FALSE )
+    pvalue<-pt( t, df, lower.tail=FALSE )
+    }
+  #Guardamos el resultado en un data frame
+  info<-data.frame(t,tcritical,pvalue)
+  info %>% kable() %>% kable_styling()
+  return (info)
+}
+
+```
+
+Lo evaluamos para las variables correspondientes, d=5, equalvar=TRUE y alternative="greater".
+
+```{r}
+
+info<-myttest(fifa_port$Weight, fifa_jug$Weight, equalvar=TRUE, 
+              alternative = "greater")
+info
+
+```
+
+
+El valor crítico para un nivel de confianza del 95% es 1.64494 y el valor observado es 29.47915.
+Por tanto, nos encontramos en la zona de rechazo de la hipótesis nula y podemos concluir que 
+**la altura de los porteros supera en más de 5 centímetros la altura de los jugadores de campo**.
+Se concluye lo mismo con el valor p, que da un valor de 8.920927e-187, muy inferior a alfa=0.05. Notar que a un nivel de confianza mucho mayor, como 99.9% también seguiría siendo muy inferior y podríamos seguir aceptando.
+
+### **¿Cuál sería el rating de un jugador de campo con pie izquierdo preferido, con un peso de 70, edad de 24, control del balón de 80 y visión de 60?**
+
+Para responder a esta pregunta vamos a estimar un **modelo de regresión lineal múltiple** que tenga como variables explicativas: 'Age', 'portero', 'Weight', 'Preffered_Foot', 'Vision' y 'Ball_Control', y como variable dependiente el 'Rating' de los jugadores.
+
+Tomaremos como nivel de referencia para 'portero' la categoría "o valor lógico "Portero" y para 'Preffered_Foot' la categoría "Left".
+
+Para ello, primeramente convertiremos en factor las variables que R las ha entendido como carácter. También cambiaremos la variable 'portero' de la siguiente forma: TRUE $\rightarrow$ "Portero", FALSE $\rightarrow$ "Jugador de campo".
+
+```{r}
+
+fifa$portero[fifa$portero == TRUE] = "Portero"
+fifa$portero[fifa$portero == FALSE] = "Jugador de campo"
+
+fifa <- mutate_if(fifa, is.character, as.factor)
+
+contrasts(fifa$portero)
+contrasts(fifa$Preffered_Foot)
+
+```
+La variable 'Preffered_Foot' tiene la categoría de referencia elegida, pero 'portero' no.
+
+```{r}
+
+fifa$portero <- relevel(fifa$portero, ref="Portero")
+contrasts(fifa$portero)
+
+```
+Generamos el modelo.
+
+```{r}
+
+attach(fifa)
+
+r = lm(Rating ~ Age + portero + Weight + Preffered_Foot + Vision + Ball_Control)
+r
+
+detach(fifa)
+
+```
+
+El modelo estimado es el siguiente:
+
+*Rating = 28.81591 + 0.44692Age -9.35312Jugador de campo + 0.24443Weight -0.04720Right_Foot + 0.08981Vision +0.20522Ball_Control*
+
+
+
+Interpretemos ahora el modelo obtenido.
+
+```{r}
+
+summary(r)
+
+```
+
+- **Calidad del ajuste**: Multiple R-squared = 0.5097, Adjusted R-squared = 0.5096. Son práticamente iguales. Tomando el segundo, que penaliza el número de covariables utilizado, se interpreta del siguiente modo: el conjunto de covariables permiten explicar un 50.96% de la variable respuesta 'Rating'. Por tanto, es un modelo de mala calidad.
+Nota: cabe señalar, además, que es una medida de calidad o precisión *indirecta* en cuanto a que, para tener una medida más *directa* o real, deberíamos evaluarlo sobre una muestra de prueba. Para ello deberíamos haber utilizado, al menos, una muestra de entrenamiento y otra de validación. O incluso utilizar técnicas más completas como la validación cruzada. Esto lo dejamos para un análisis más exhaustivo, pero conviene comentarlo.
+
+- **Contraste fundamental**: p-value: < 2.2e-16. Por tanto, el conjunto de covariables *sirve* para describir la variable respuesta 'Rating'. Es decir, el vector de coeficientes poblacionales no es el vector nulo.
+
+- **Contrastes particulares**: p-value(s) < 0.05 todos, excepto para 'Preffered_Foot'. Esto indica que todas las covariables son significativas excepto ella. O lo que es lo mismo, que a un 95% de confianza podemos asegurar que todos los coeficientes poblacionales no nulos, excepción del de 'Preffered_Foot' (su categroría no base), que no podemos asgurarlo.
+
+- **Interpretación de los coeficientes**: las variables 'Age', 'Weight', 'vision' y 'Ball_Control' tienen coeficientes postivos. Esto quiere decir que el aumento de la edad, peso o visión del jugador influyen en un aumento de su 'Rating'. Dicho de otro modo, a igualdad de condiciones, si un jugador es mayor que otro tendrá mayor 'Rating'. Análogo para mayor peso o visión de juego. Por su parte, las variables categóricas 'portero' y 'Preffered_foot' tienen los respectivos coeficientes negativos -3.9001 y -0.4618. Atendiendo a la categoría base de cada una, la interpretación es la siguiente: a igualdad de condiciones, un jugador de campo tienen un 'Rating' 3.9 menor que un portero. Análogamente, a igualdad de condiciones, un jugador diestro tiene un 'Rating' 0.46 menor que uno zurdo. Hay que tener en cuenta que, por ejemplo, un portero con misma visión que otro jugador de campo es lógico que tenga notablemente mayor 'Rating' que el jugador. Es coherente con la realidad futbolística.
+
+
+
+Ahora aplicaremos el modelo de regresión para contestar a la pregunta planteada: predecir el rating de un jugador de campo con pie izquierdo preferido, con un peso de 70, edad de 24, control del balón de 80 y visión de 60.
+
+```{r}
+
+(newdata = data.frame(Age=24, portero="Jugador de campo", Weight=70, 
+                      Preffered_Foot="Left", Vision=60, Ball_Control=80))
+
+```
+
+```{r}
+
+predict(r, newdata)
+
+```
+
+**El 'Rating' predecido por el modelo, para un jugador de campo con pie izquierdo preferido, con un peso de 70, edad de 24, control del balón de 80 y visión de 60 es 69.1048.**
+
+
+Por último, plateemos un caso un tanto curioso. l
+
+Veamos qué 'Rating' predice de un jugador con una vision de juego y control de balón perfectos. Es decir ambos valores serán 100, con el resto de características igual que las anteriores.
+
+```{r}
+
+(newdata = data.frame(Age=24, portero="Jugador de campo", Weight=70, 
+                      Preffered_Foot="Left", Vision=100, Ball_Control=100))
+
+```
+
+
+```{r}
+
+predict(r, newdata)
+
+```
+Como vemos, nos predice un valor de 'Rating' bastante mediocre para los valores de visión de juego y control de balón indicados. Esto puede tener dos causas: la mala calidad del modelo, o que las dos variables, visión de juego y control de balón, no sean tan influyentes realmente como podríamos pensar. ¿Por cuál te decidirías?
+
+Damos una pista.
+
+```{r}
+
+cor(fifa$Rating, fifa$Vision)
+cor(fifa$Rating, fifa$Ball_Control)
+cor(select_if(fifa, is.numeric))[,4]
+
+```
+
+Ahí vemos que el coeficiente de correlación de la edad 'Age' con 'Rating' es incluso menor que el de 'Vision', mientras que el coeficiente estimado en el modelo de esta útimo es considerablemente menor. Por tanto nos decidimos que la razón es la mala calidad de nuestro modelo. Seguramente se deba al conocido problema de la *multicolinealidad*, que se refiere a la fuerte relación de las covariables involucradas.
+
+Y con esto hemos terminado el análisis de nuestros datos.
+
+
+# 5.	Resolución del problema. A partir de los resultados obtenidos, ¿cuáles son las conclusiones? ¿Los resultados permiten responder al problema? 
+
+Hemos conseguido a través de las representaciones gráficas y de manera analítica a través de los distintos análisis estadísticos responder a todas las preguntas. En base a esto, podemos enumerar las siguientes conclusiones, con un 95% de confianza:
+
+* **La media de la valoración global de los jugadores se encuentra alrededor de 66 puntos.**
+
+* **Los jugadores zurdos son superiores a los diestros en cuanto a control de la pelota, valoración global, y control de regateo.**
+
+* **En el caso de los equipos del Real Madrid y el Barcelona, no podemos afirmar que el número de jugadores con una valoración global superior a 90 sea distinto en alguno de los dos.** 
+
+* **Los porteros pesan más que los jugadores de campo**. 
+
+* **Los porteros son 5 cms más altos que los jugadores de campo**
+
+* **El ‘Rating’ para un jugador de campo con pie izquierdo preferido, con un peso de 70, edad de 24, control del balón de 80 y visión de 60 es 69.1048.**
+
+
+# 6. Dataset final
+
+Exportamos el dataset final procesado.
+
+```{r}
+write.csv(fifa, "fifa_clean.csv")
+```
+
+# 7. Contribuciones
+
+* Investigación previa: María Sánchez y Cayetano Bautista 
+* Redacción de las respuestas: María Sánchez y Cayetano Bautista 
+* Desarrollo código: María Sánchez y Cayetano Bautista 
+
+
