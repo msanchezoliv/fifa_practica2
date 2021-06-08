@@ -12,9 +12,9 @@ Master de Data Science.
 Universitat Oberta of Catalunya.
 
 Dataset
-Puede chequear el dataset en la siguiente dirección:
+Puede chequear tanto el dataset inicial como el final procesado en la siguiente dirección:
 
-https://github.com/Bengis/nba-gap-cleaning/blob/master/data/nba_out.csv
+https://github.com/msanchezoliv/fifa_practica2/tree/main/data
 
 Licencia
 El contenido de este proyecto esta licencia bajo la Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International, y el código fuente usadao para mostrar este contenido esta licenciado bajo la MIT license.
